@@ -2,6 +2,9 @@
 
 # 👻 INBOX EXORCIST
 
+## Screenshot
+
+![Screenshot](assets/screenshot.png)
 ### *Cast the newsletter demons out of your inbox. One button. Zero mercy.*
 
 A maximalist neon exorcism for your Gmail: check if your email leaked in data breaches, hunt down every vendor spamming you, then **NUKE** them — automatic unsubscribes plus Gmail filters so their future mail never reaches you again. With screen-shake, synthesized SFX, and spirit-wisp particles, because inbox cleaning should feel like a boss fight.
