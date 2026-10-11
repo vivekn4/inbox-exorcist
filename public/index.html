@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>INBOX EXORCIST — Cast the newsletter demons out</title>
+<meta name="description" content="Check data breaches, find every vendor spamming your Gmail, and NUKE them with one button. By Vivek Nair (VN).">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="css/exorcist.css">
+</head>
+<body>
+<canvas id="wisps" aria-hidden="true"></canvas>
+<div id="flash" aria-hidden="true"></div>
+<div id="holyburst" aria-hidden="true"></div>
+
+<button id="muteBtn" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+
+<header class="topbar">
+  <div class="vn-logo" aria-label="VN — Vivek Nair">VN</div>
+  <div class="topbar-sub">INBOX&nbsp;EXORCIST <span class="vtag">v1.0</span></div>
+</header>
+
+<main id="app">
+
+  <!-- ============ SCREEN 1 · HERO ============ -->
+  <section id="screen-hero" class="screen active">
+    <div class="scanlines" aria-hidden="true"></div>
+    <h1 class="neon-title flicker">INBOX<br>EXORCIST</h1>
+    <p class="tagline">Cast the newsletter demons out of your inbox. <span class="holy">One button. Zero mercy.</span></p>
+
+    <div class="card breach-card">
+      <h2>👻 1 · Has your email leaked?</h2>
+      <p class="muted">Checked against the public XposedOrNot breach corpus — <em>not</em> "the entire internet" (anyone who claims that is lying).</p>
+      <div class="row">
+        <input id="emailInput" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email" aria-label="Email to check">
+        <button id="breachBtn" class="btn btn-holy">SCAN FOR BREACHES</button>
+      </div>
+      <div id="breachResult" class="breach-result hidden"></div>
+    </div>
+
+    <div class="card">
+      <h2>📥 2 · Hunt the demons in your Gmail</h2>
+      <p class="muted">We scan <strong>only</strong> message headers (From / List-Unsubscribe) — bodies are never fetched, never logged. Only senders advertising an unsubscribe link are listed. Personal mail is untouchable.</p>
+      <div class="row wrap">
+        <button id="connectBtn" class="btn btn-neon">CONNECT GMAIL</button>
+        <button id="demoBtn" class="btn btn-ghost">TRY WITHOUT GMAIL (DEMO)</button>
+      </div>
+      <p id="authNote" class="muted small"></p>
+      <button id="scanBtn" class="btn btn-holy hidden">🔍 SCAN MY INBOX</button>
+      <div id="scanProgress" class="hidden">
+        <div class="pbar"><div id="scanFill" class="pfill"></div></div>
+        <p id="scanLabel" class="muted"></p>
+      </div>
+    </div>
+
+    <p class="honesty">No data leaves your control. OAuth tokens live in server memory only — never on disk, never in a repo. <button id="disconnectBtn" class="linklike hidden">Disconnect Gmail</button></p>
+  </section>
+
+  <!-- ============ SCREEN 2 · BREACH REPORT ============ -->
+  <section id="screen-breach" class="screen">
+    <div id="breachShield" class="shield">🛡️</div>
+    <h2 id="breachHeadline" class="neon-sub"></h2>
+    <p id="breachSub" class="muted"></p>
+    <div id="breachList" class="card hidden"></div>
+    <div class="row">
+      <button id="breachBack" class="btn btn-ghost">← BACK</button>
+      <button id="breachContinue" class="btn btn-neon">HUNT INBOX DEMONS →</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3 · VENDOR DASHBOARD ============ -->
+  <section id="screen-vendors" class="screen">
+    <h2 class="neon-sub">😈 DEMONS FOUND: <span id="demonCount">0</span></h2>
+    <p class="muted">Check the ones you want gone. Nothing happens until you confirm — this is a dry-run-first exorcism.</p>
+
+    <div class="toolbar">
+      <div id="catChips" class="chips"></div>
+      <button id="selectAllBtn" class="btn btn-ghost small">SELECT ALL</button>
+      <button id="selectNoneBtn" class="btn btn-ghost small">CLEAR</button>
+    </div>
+
+    <div id="vendorList" class="vendor-list"></div>
+    <div id="pureMsg" class="card hidden">✨ <strong>Your inbox is already pure.</strong> No newsletter demons detected. Go touch grass.</div>
+
+    <div class="card">
+      <h3>⚖️ What should happen to their future mail?</h3>
+      <div class="row">
+        <label class="radio-card"><input type="radio" name="filterAction" value="archive" checked><span><strong>📦 Archive</strong><small>Skip inbox, keep searchable</small></span></label>
+        <label class="radio-card"><input type="radio" name="filterAction" value="delete"><span><strong>🗑️ Delete</strong><small>Gone forever</small></span></label>
+      </div>
+    </div>
+
+    <div class="nuke-zone">
+      <button id="nukeBtn" class="nuke-btn" disabled><span class="nuke-fill"></span><span class="nuke-label">☠️ NUKE <span id="nukeCount">0</span> DEMONS</span></button>
+      <p class="muted small">Hold 0.6s to charge — then you'll see exactly what happens before anything runs.</p>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4 · EXORCISM PROGRESS ============ -->
+  <section id="screen-nuke" class="screen">
+    <h2 class="neon-sub">🔥 EXORCISM IN PROGRESS</h2>
+    <div class="pbar big"><div id="nukeFill" class="pfill"></div></div>
+    <p id="nukeCounter" class="counter">0 demons exorcised</p>
+    <ul id="nukeFeed" class="nuke-feed"></ul>
+    <div id="nukeReport" class="card hidden"></div>
+    <div class="row">
+      <button id="dlReportBtn" class="btn btn-holy hidden">⬇ DOWNLOAD REPORT</button>
+      <button id="nukeRestart" class="btn btn-ghost hidden">↺ SCAN AGAIN</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- Dry-run modal -->
+<div id="dryrunModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <h2>📜 THE RITUAL — READ BEFORE YOU CAST</h2>
+    <div id="dryrunBody"></div>
+    <div class="row">
+      <button id="dryrunCancel" class="btn btn-ghost">CANCEL</button>
+      <button id="dryrunConfirm" class="btn btn-blood">CAST IT 🔥</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div>Crafted with 😈 by <strong>Vivek Nair</strong> <span class="vn-tag">VN</span> · <a href="https://github.com/vivekn4/inbox-exorcist">github.com/vivekn4/inbox-exorcist</a></div>
+  <div class="muted small">Breach data: XposedOrNot public corpus · Unsubscribes: RFC 2369 / RFC 8058 · Filters: Gmail API</div>
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
