@@ -17,7 +17,7 @@
 
 <header class="topbar">
   <div class="vn-logo" aria-label="VN — Vivek Nair">VN</div>
-  <div class="topbar-sub">INBOX&nbsp;EXORCIST <span class="vtag">v1.0</span></div>
+  <div class="topbar-sub">INBOX&nbsp;EXORCIST <span class="vtag">v1.1</span></div>
 </header>
 
 <main id="app">
@@ -72,9 +72,17 @@
   <section id="screen-vendors" class="screen">
     <h2 class="neon-sub">😈 DEMONS FOUND: <span id="demonCount">0</span></h2>
     <p class="muted">Check the ones you want gone. Nothing happens until you confirm — this is a dry-run-first exorcism.</p>
+    <p id="windowNote" class="muted small"></p>
 
     <div class="toolbar">
       <div id="catChips" class="chips"></div>
+      <label class="muted small" for="sortSelect">Sort:
+        <select id="sortSelect" class="sort-select">
+          <option value="count">Most mail</option>
+          <option value="unread">Most unread</option>
+          <option value="recent">Most recent</option>
+        </select>
+      </label>
       <button id="selectAllBtn" class="btn btn-ghost small">SELECT ALL</button>
       <button id="selectNoneBtn" class="btn btn-ghost small">CLEAR</button>
     </div>
@@ -116,6 +124,10 @@
   <div class="modal-box">
     <h2>📜 THE RITUAL — READ BEFORE YOU CAST</h2>
     <div id="dryrunBody"></div>
+    <div class="dryrun-options">
+      <label class="dry-check"><input type="checkbox" id="dryrunDeleteExisting"> 🗑️ <strong>Also delete their existing mail</strong> <span class="muted small">— permanently removes all current messages from these senders (mailbox totals shown above), not just future mail.</span></label>
+      <label id="dryrunProtectedWrap" class="dry-check hidden"><input type="checkbox" id="dryrunAllowProtected"> 🛡️ <strong>Include protected senders</strong> <span class="muted small">— banks / government / security mail. Only check this if you really mean to cut them off.</span></label>
+    </div>
     <div class="row">
       <button id="dryrunCancel" class="btn btn-ghost">CANCEL</button>
       <button id="dryrunConfirm" class="btn btn-blood">CAST IT 🔥</button>

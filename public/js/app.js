@@ -6,7 +6,20 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-const state = { vendors: [], selected: new Set(), catFilter: "all", demo: false, report: null, breach: null };
+const state = { vendors: [], selected: new Set(), catFilter: "all", demo: false, report: null, breach: null, sortBy: "count", scanTarget: 0 };
+
+function timeAgo(iso) {
+  const t = Date.parse(iso || "");
+  if (!t) return "";
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
 
 function show(id) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
@@ -207,7 +220,9 @@ async function pollScan(scanId) {
     if (d.status === "done") {
       state.vendors = d.vendors || [];
       state.demo = d.demo === true;
-      state.selected = new Set(state.vendors.map((v) => v.id));
+      state.scanTarget = d.target || 0;
+      // Protected senders (banks / gov / security) are NEVER pre-selected.
+      state.selected = new Set(state.vendors.filter((v) => !v.protected).map((v) => v.id));
       $("scanBtn").disabled = false;
       $("scanProgress").classList.add("hidden");
       $("scanFill").style.width = "0%";
@@ -229,6 +244,9 @@ function renderVendors() {
   $("demonCount").textContent = state.vendors.length;
   $("pureMsg").classList.toggle("hidden", state.vendors.length > 0);
   $("vendorList").style.display = state.vendors.length ? "" : "none";
+  $("windowNote").textContent = state.scanTarget
+    ? `Counts cover the last ${state.scanTarget} scanned messages (the scan window) — each sender's real mailbox total is shown in the dry-run before you cast.`
+    : "";
 
   $("catChips").innerHTML = CATS.map((c) =>
     `<button class="chip ${state.catFilter === c ? "on" : ""}" data-cat="${c}">${c === "all" ? "ALL" : c.toUpperCase()}</button>`).join("");
@@ -237,14 +255,31 @@ function renderVendors() {
   });
 
   const list = state.vendors.filter((v) => state.catFilter === "all" || v.category === state.catFilter);
-  $("vendorList").innerHTML = list.map((v) => `
-    <label class="vendor-card" data-id="${esc(v.id)}">
+  const sorted = [...list].sort((a, b) => {
+    if (state.sortBy === "unread") return (b.unread || 0) - (a.unread || 0) || b.count - a.count;
+    if (state.sortBy === "recent") return Date.parse(b.lastSeen || 0) - Date.parse(a.lastSeen || 0);
+    return b.count - a.count;
+  });
+  $("vendorList").innerHTML = sorted.map((v) => {
+    const unreadPct = v.count ? Math.round(((v.unread || 0) / v.count) * 100) : 0;
+    const unreadBadge = (v.unread || 0) > 0
+      ? `<span class="unread-badge" title="${v.unread} of ${v.count} unread in the scanned window">📬 ${unreadPct}% unread</span>` : "";
+    const lastSeen = v.lastSeen ? `<span class="lastseen" title="Most recent message in the scanned window">🕑 ${timeAgo(v.lastSeen)}</span>` : "";
+    const prot = v.protected
+      ? `<span class="protected-badge" title="Protected sender (bank / government / security mail) — excluded from Select All, needs an explicit opt-in to nuke">🛡️ PROTECTED</span>` : "";
+    const subjects = (v.exampleSubjects || []).join(" · ");
+    return `
+    <label class="vendor-card ${v.protected ? "is-protected" : ""}" data-id="${esc(v.id)}">
       <input type="checkbox" ${state.selected.has(v.id) ? "checked" : ""} aria-label="Select ${esc(v.displayName)}">
-      <span class="who"><strong>${esc(v.displayName)}</strong><small>${esc(v.sender)}${v.sampleSubject ? " · “" + esc(v.sampleSubject) + "”" : ""}</small></span>
+      <span class="who"><strong>${esc(v.displayName)}</strong><small title="${esc(subjects)}">${esc(v.sender)}${v.sampleSubject ? " · “" + esc(v.sampleSubject) + "”" : ""}</small></span>
       <span class="badge">${v.count}✉️</span>
+      ${unreadBadge}
+      ${lastSeen}
+      ${prot}
       <span class="cattag ${esc(v.category)}">${esc(v.category)}</span>
       <span class="strategy">${STRAT_LABEL[v.strategy] || v.strategy}</span>
-    </label>`).join("");
+    </label>`;
+  }).join("");
   $("vendorList").querySelectorAll(".vendor-card").forEach((card) => {
     const box = card.querySelector("input");
     box.addEventListener("change", () => {
@@ -260,8 +295,9 @@ function updateNukeBtn() {
   $("nukeCount").textContent = n;
   $("nukeBtn").disabled = n === 0;
 }
-$("selectAllBtn").onclick = () => { state.vendors.forEach((v) => state.selected.add(v.id)); SFX.tick(); renderVendors(); };
+$("selectAllBtn").onclick = () => { state.vendors.forEach((v) => { if (!v.protected) state.selected.add(v.id); }); SFX.tick(); renderVendors(); };
 $("selectNoneBtn").onclick = () => { state.selected.clear(); SFX.tick(); renderVendors(); };
+$("sortSelect").onchange = () => { state.sortBy = $("sortSelect").value; SFX.tick(); renderVendors(); };
 
 /* NUKE charge-up: hold 0.6s (accidental-press protection + drama) */
 (() => {
@@ -286,31 +322,44 @@ $("selectNoneBtn").onclick = () => { state.selected.clear(); SFX.tick(); renderV
 async function openDryRun() {
   const ids = [...state.selected];
   const filterAction = document.querySelector('input[name="filterAction"]:checked').value;
+  const hasProtected = ids.some((id) => (state.vendors.find((v) => v.id === id) || {}).protected);
   $("dryrunBody").innerHTML = `<p class="muted">🔮 Consulting the spirits…</p>`;
+  $("dryrunDeleteExisting").checked = false;
+  $("dryrunAllowProtected").checked = false;
+  $("dryrunProtectedWrap").classList.toggle("hidden", !hasProtected);
   $("dryrunModal").classList.remove("hidden");
-  try {
-    const r = await fetch("/api/nuke", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vendorIds: ids, filterAction, dryRun: true, demo: state.demo }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "dry run failed");
-    const p = d.plan;
-    $("dryrunBody").innerHTML = `
-      <p><strong>${p.total} vendors</strong> will face the ritual:</p>
-      ${p.items.map((i) => `<div class="dry-item">😈 <strong>${esc(i.displayName || i.sender)}</strong><br><span class="muted">${esc(i.willDo)}</span></div>`).join("")}
-      <p class="muted" style="margin-top:12px">🛡️ ${esc(p.filterNote)}</p>
-      ${ids.length > 400 ? `<p style="color:var(--blood)">⚠️ Over 400 at once hits Gmail sending limits — split into batches.</p>` : ""}`;
-    $("dryrunConfirm").onclick = () => { $("dryrunModal").classList.add("hidden"); SFX.riser(); castNuke(ids, filterAction); };
-  } catch (e) {
-    SFX.buzz();
-    $("dryrunBody").innerHTML = `<p style="color:var(--blood)">⚠️ ${esc(e.message)}</p>`;
-  }
+  const refreshPlan = async () => {
+    $("dryrunBody").innerHTML = `<p class="muted">🔮 Consulting the spirits…</p>`;
+    try {
+      const r = await fetch("/api/nuke", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorIds: ids, filterAction, dryRun: true, demo: state.demo, deleteExisting: $("dryrunDeleteExisting").checked, allowProtected: $("dryrunAllowProtected").checked }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "dry run failed");
+      const p = d.plan;
+      $("dryrunBody").innerHTML = `
+        <p><strong>${p.total} vendors</strong> will face the ritual:</p>
+        ${p.items.map((i) => `<div class="dry-item">😈 <strong>${esc(i.displayName || i.sender)}</strong>${i.protected ? ` <span class="protected-badge">🛡️ PROTECTED</span>` : ""}<br><span class="muted">${esc(i.willDo)}</span>${i.mailboxEstimate != null ? `<br><span class="muted">📦 Mailbox total: ~${i.mailboxEstimate} messages from this sender (vs ${esc(String(state.vendors.find((v) => v.id === i.id)?.count ?? "?"))} in the scanned window)</span>` : ""}</div>`).join("")}
+        <p class="muted" style="margin-top:12px">🛡️ ${esc(p.filterNote)}</p>
+        ${ids.length > 400 ? `<p style="color:var(--blood)">⚠️ Over 400 at once hits Gmail sending limits — split into batches.</p>` : ""}`;
+      $("dryrunConfirm").onclick = () => {
+        $("dryrunModal").classList.add("hidden"); SFX.riser();
+        castNuke(ids, filterAction, { deleteExisting: $("dryrunDeleteExisting").checked, allowProtected: $("dryrunAllowProtected").checked });
+      };
+    } catch (e) {
+      SFX.buzz();
+      $("dryrunBody").innerHTML = `<p style="color:var(--blood)">⚠️ ${esc(e.message)}</p>`;
+    }
+  };
+  $("dryrunDeleteExisting").onchange = refreshPlan;
+  $("dryrunAllowProtected").onchange = refreshPlan;
+  await refreshPlan();
 }
 $("dryrunCancel").onclick = () => { $("dryrunModal").classList.add("hidden"); SFX.tick(); };
 
 /* ---------------- exorcism ---------------- */
-async function castNuke(ids, filterAction) {
+async function castNuke(ids, filterAction, opts = {}) {
   show("screen-nuke");
   $("nukeReport").classList.add("hidden");
   $("dlReportBtn").classList.add("hidden");
@@ -320,7 +369,7 @@ async function castNuke(ids, filterAction) {
   try {
     const r = await fetch("/api/nuke", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vendorIds: ids, filterAction, demo: state.demo }),
+      body: JSON.stringify({ vendorIds: ids, filterAction, demo: state.demo, deleteExisting: opts.deleteExisting === true, allowProtected: opts.allowProtected === true }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "nuke failed");
@@ -378,6 +427,7 @@ function finishNuke(job) {
       <span class="bucket fail">❌ ${s.failed} failed</span>
     </div>
     <p class="muted">${esc(s.message)}</p>
+    ${s.deleteExisting ? `<p>🗑️ <strong>${s.deletedExisting} existing messages</strong> permanently deleted from these senders.</p>` : ""}
     ${s.filterErrors.length ? `<p style="color:var(--blood)">Filter errors: ${esc(s.filterErrors.join("; "))}</p>` : ""}
     ${manual.length ? `<h4>🔗 Finish these manually:</h4><ul>${manual.map((v) => {
       const url = (v.detail.match(/https?:\/\/[^\s)]+/) || [])[0];
@@ -396,7 +446,9 @@ $("dlReportBtn").onclick = () => {
   const lines = [
     "INBOX EXORCIST — exorcism report", `Date: ${new Date().toISOString()}`, `Filter action: ${job.summary.filterAction}`,
     `Exorcised: ${job.summary.unsubscribed} | Need manual click: ${job.summary.manual} | Failed: ${job.summary.failed}`,
-    `Grouped Gmail filters created: ${job.summary.filtersCreated}`, "",
+    `Grouped Gmail filters created: ${job.summary.filtersCreated}`,
+    ...(job.summary.deleteExisting ? [`Existing messages deleted: ${job.summary.deletedExisting}`] : []),
+    "",
     ...job.vendors.map((v) => `[${v.status.replace("done:", "").toUpperCase()}] ${v.displayName} <${v.sender}> — ${v.detail}`),
     "", "Crafted by Vivek Nair (VN) — https://github.com/vivekn4/inbox-exorcist",
   ];
