@@ -92,3 +92,37 @@ Browser (static frontend, zero build)  →  Express backend (Node 20)  →  Gmai
 **VFX:** ember/spirit particles, neon glow text, NUKE button charge-up animation (holds 0.6s — doubles as accidental-press protection), screen shake + flash per kill, scan-line sweep during breach check.
 
 **Simplicity rules:** plain words ("Nuke selected", not "Execute batch unsubscribe"); every destructive action shows exactly what will happen first; demo mode toggle ("Try without Gmail") so anyone can play with it in 10 seconds.
+
+## 5. v1.1 — teardown upgrades (2026-10-14, from peer-app research)
+
+Mechanisms learned from similar apps, re-implemented in original code
+(no copied code, strings, art, or brand names):
+
+1. **Protected-sender guardrail** (idea seen in peer cleanup tools' safety
+   systems): financial / government senders + security-subject mail are
+   flagged `protected`, never pre-selected, excluded from Select All, and
+   refused by `/api/nuke` unless the request carries `allowProtected: true`.
+   Own implementation: `isProtectedSender()` in `lib/util.js`.
+2. **Unread-rate + recency per vendor** (peer tools surface a read/unread
+   ratio per sender stack + example subjects): scan captures Gmail `UNREAD`
+   labels + `Date` header + up to 3 example subjects → vendor fields
+   `unread`, `unreadRate`, `lastSeen`, `exampleSubjects`. Frontend shows a
+   "% unread" badge, "last seen", and sort by Most mail / Most unread /
+   Most recent.
+3. **Delete existing mail** (peer tools offer trash-all-from-sender):
+   opt-in `deleteExisting` on `/api/nuke` lists all message IDs per sender
+   and `batchDelete`s them in 1000-message chunks, with a 5000-per-sender
+   safety cap (`DELETE_EXISTING_CAP`). Reported per vendor + in summary.
+4. **Mailbox-total honesty in dry-run** (peer tools reconcile "in view" vs
+   mailbox-wide counts at confirm time): dry-run attaches
+   `mailboxEstimate` per vendor via Gmail `resultSizeEstimate`; scan UI
+   labels counts as "last N scanned messages".
+5. **Exponential backoff on Gmail metadata fetch** (peer tools retry
+   403/429 with backoff): `withRetry()` in `lib/util.js`, used by the scan.
+
+Deliberately NOT implemented: persistent run-history/exports (server is
+stateless by design; Render free tier wipes memory — the downloadable
+per-nuke report already covers the audit need); AI/LLM sender scoring
+(zero-budget rule, no keys); FairEmail APK teardown (download truncated
+at 16.5 MiB by the egress proxy on both GitHub Releases and F-Droid —
+artifact unobtainable, moved on per instructions).

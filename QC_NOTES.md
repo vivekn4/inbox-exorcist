@@ -51,3 +51,45 @@ Tested 2026-10-10 by Squirt (agent) before handoff. **No real Gmail account was 
 - `baseDomain` grouping is a heuristic (small two-level-suffix list), not a full public-suffix list
 - Real Gmail scan/nuke paths (OAuth, `users.messages.send`, `settings.filters.create`) are code-reviewed but **not live-tested** — they require the user's own Google Cloud credentials; demo mode simulates them
 - Render free tier sleeps: in-memory sessions/jobs are lost on sleep (user re-connects; documented)
+
+## v1.1 QA — 2026-10-14 (teardown + upgrade pass)
+
+Peer apps analyzed (mechanisms only, all re-implemented in original code):
+- **haris-cl/inbox-nuke** (MIT, GitHub `8e48e142…`) — safety guardrails,
+  multi-signal recommendations, whitelist, run history. REA on its
+  Next.js frontend: 66 files parsed, 990 findings.
+- **nilaybarde/gmail-cleanup-tool** (GitHub `ecfb0d0a…`) — batch metadata
+  fetch with 403 backoff, example subjects per sender, batchDelete.
+  Built its Vite frontend locally; REA on the shipped bundle
+  `dist/assets/index-He8wRsYm.js` (sha256 `ebc1afa4…847a0781`,
+  586,139 bytes): AST parse complete, 196,959 nodes; semantic phase hit
+  REA's worker heap limit (partial coverage, recorded in REA output).
+- **niraj8/mailprune** (GitHub `304de51d…`) — sender stacks, read-rate %,
+  "in view vs mailbox total" confirm honesty, action log. Docs/ADR-based
+  (Rust TUI — no JS bundle / APK to REA).
+- FairEmail APK: NOT analyzed — official GitHub Release + F-Droid
+  downloads both truncated at exactly 16.5 MiB by the egress proxy;
+  artifact unobtainable, moved on. No paid apps downloaded anywhere.
+
+Unit tests: **26/26 pass** (`npm test`: 17 original + 9 new v1.1 —
+protected senders, merge of unread/recency/subjects, backoff, retry,
+chunking, dry-run delete-existing text, delete-existing chunking + cap).
+A test caught a real bug pre-ship: `baseDomain("servicecanada.gc.ca")`
+collapses to `gc.ca`, breaking the `.gc.ca` suffix check — fixed by
+testing suffixes against the full host.
+
+Live server tests (PORT 3125, demo mode, no OAuth creds):
+| Test | Result |
+|---|---|
+| `GET /api/health` | 200, version 1.1.0 |
+| `GET /api/demo/vendors` | 10 vendors incl. 1 protected (Maple Bank Alerts), all with unread/unreadRate/lastSeen/exampleSubjects |
+| Dry-run `deleteExisting:true` (Daily Deals) | plan shows `mailboxEstimate: 151`, "Will ALSO permanently delete ~151 existing messages" |
+| Dry-run protected WITHOUT opt-in | 400 `PROTECTED_REQUIRES_OPT_IN` |
+| Dry-run protected WITH `allowProtected:true` | 200 |
+| Demo nuke `deleteExisting:true` + protected opt-in (2 vendors) | `done`, `deletedExisting` 151 + 73, per-vendor detail lines |
+| Forged vendor ID | 400 "Those vendors aren't from your last scan" |
+| All 44 `$("…")` IDs in app.js exist in index.html (incl. 5 new v1.1 IDs) | pass |
+| `/`, `/css/exorcist.css`, `/js/app.js`, `/favicon.svg` | all 200 |
+
+Not live-tested (same as v1.0): real Gmail OAuth scan/nuke paths —
+require the user's own Google Cloud credentials. Demo mode simulates them.

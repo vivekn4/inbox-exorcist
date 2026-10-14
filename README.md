@@ -16,8 +16,8 @@ A maximalist neon exorcism for your Gmail: check if your email leaked in data br
 ## ✨ What it does
 
 1. **👻 Breach check** — type any email, get told which public data breaches it appeared in (via the free XposedOrNot API, no key needed).
-2. **📥 Vendor hunt** — connect your Gmail (OAuth2, your own free Google credentials) and it scans your inbox for every sender advertising an unsubscribe link: newsletters, promos, social updates. Cards show sender, email count, category, and unsubscribe method.
-3. **☠️ NUKE** — pick your demons, hold the big red button for 0.6s, review the dry-run ritual, confirm — and the exorcist unsubscribes each one (one-click POST / unsubscribe email / link visit) then creates **grouped Gmail filters** so their future mail is archived or deleted. Per-vendor progress, screen shake + zap per kill, holy-light burst on completion, downloadable report.
+2. **📥 Vendor hunt** — connect your Gmail (OAuth2, your own free Google credentials) and it scans your inbox for every sender advertising an unsubscribe link: newsletters, promos, social updates. Cards show sender, email count, category, unsubscribe method — plus **% unread** (how much of this sender you never even open), **last-seen**, and up to 3 example subjects so you recognize each demon. **🛡️ Protected senders** (banks, government, security mail) are flagged, never pre-selected, and need an explicit opt-in before any nuke touches them.
+3. **☠️ NUKE** — pick your demons, hold the big red button for 0.6s, review the dry-run ritual, confirm — and the exorcist unsubscribes each one (one-click POST / unsubscribe email / link visit) then creates **grouped Gmail filters** so their future mail is archived or deleted. The dry-run shows each sender's **real mailbox total** (not just the scanned window) before you cast. Optional: **🗑️ also delete their existing mail** (Gmail batchDelete, 1000/call, 5000-per-sender safety cap). Per-vendor progress, screen shake + zap per kill, holy-light burst on completion, downloadable report.
 
 **Demo mode:** no Gmail? Hit **TRY WITHOUT GMAIL** — the whole UI runs on mock demons with simulated exorcisms. The full experience in 10 seconds, zero setup.
 
@@ -103,11 +103,11 @@ Hover blip · checkbox tick · NUKE charge riser · per-kill zap · completion c
 | `POST` | `/auth/logout` | Wipe tokens |
 | `POST` | `/api/scan` | Start async scan → `{ scanId }` (`{ demo, max }`) |
 | `GET` | `/api/scan/status/:scanId` | Progress + vendor list when done |
-| `POST` | `/api/nuke` | `{ vendorIds, filterAction, dryRun?, demo? }` → plan or `{ jobId }` |
+| `POST` | `/api/nuke` | `{ vendorIds, filterAction, dryRun?, demo?, deleteExisting?, allowProtected? }` → plan or `{ jobId }` |
 | `GET` | `/api/nuke/progress/:jobId` | Per-vendor status + final summary |
 | `GET` | `/api/demo/vendors` | Mock vendors |
 
-**Safety rules enforced server-side:** only vendors from your last scan (IDs validated against the scan catalog — forged IDs are rejected); only senders with `List-Unsubscribe` signals are ever listed; nukes over 400 are refused (Gmail send quotas); dry-run preview before anything executes.
+**Safety rules enforced server-side:** only vendors from your last scan (IDs validated against the scan catalog — forged IDs are rejected); only senders with `List-Unsubscribe` signals are ever listed; nukes over 400 are refused (Gmail send quotas); dry-run preview before anything executes; **protected senders** (banks / government / security mail) are refused unless the request carries `allowProtected: true`; **delete-existing** is opt-in only and capped at 5000 messages per sender.
 
 ---
 
