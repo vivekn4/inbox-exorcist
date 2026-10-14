@@ -39,7 +39,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const FRONTEND_URL = (process.env.FRONTEND_URL || "").trim();
 const TRUST_PROXY = process.env.TRUST_PROXY ?? "1";
 const DEMO_MODE = process.env.DEMO_MODE === "1"; // force demo data even with OAuth set
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const SERVICE = "inbox-exorcist";
 
 const log = (level, fields = {}) =>
@@ -214,7 +214,8 @@ app.get("/api/demo/vendors", (_req, res) => res.json({ demo: true, vendors: demo
 
 /* ---------------- NUKE ---------------- */
 app.post("/api/nuke", nukeLimiter, async (req, res) => {
-  const { vendorIds, filterAction = "archive", dryRun = false, demo = false } = req.body || {};
+  const { vendorIds, filterAction = "archive", dryRun = false, demo = false,
+    deleteExisting = false, allowProtected = false } = req.body || {};
   if (!Array.isArray(vendorIds) || vendorIds.length === 0) {
     return res.status(400).json({ error: "Select at least one vendor to exorcise." });
   }
@@ -232,9 +233,41 @@ app.post("/api/nuke", nukeLimiter, async (req, res) => {
     return res.status(400).json({ error: "Those vendors aren't from your last scan. Scan again first." });
   }
 
-  if (dryRun) return res.json({ dryRun: true, plan: dryRunPlan(vendors, filterAction) });
+  // SAFETY: protected senders (banks, government, security mail) need an
+  // explicit opt-in — a bulk click must never silently kill them.
+  const blocked = vendors.filter((v) => v.protected && !allowProtected);
+  if (blocked.length) {
+    return res.status(400).json({
+      error: `Protected sender(s) need an explicit opt-in: ${blocked.map((v) => v.displayName).join(", ")}. Check "Include protected senders" if you really mean it.`,
+      code: "PROTECTED_REQUIRES_OPT_IN",
+      protected: blocked.map((v) => v.id),
+    });
+  }
 
-  const jobId = createNukeJob({ vendors, filterAction, demo: useDemo });
+  // Mailbox-wide estimates: the scan only sees a window of recent mail, so
+  // the dry-run shows each sender's REAL mailbox total (resultSizeEstimate)
+  // next to the in-window count. Demo mode synthesizes a plausible number.
+  const withEstimates = await Promise.all(vendors.map(async (v) => {
+    if (useDemo) return { ...v, mailboxEstimate: v.count * 3 + 7 };
+    return { ...v, mailboxEstimate: null };
+  }));
+  if (dryRun) {
+    if (!useDemo) {
+      if (!req.session.tokens) return res.status(401).json({ error: "Connect Gmail first.", code: "AUTH_REQUIRED" });
+      const { gmail } = gmailFor(req.session.tokens);
+      await Promise.all(withEstimates.map(async (v) => {
+        try {
+          const { data } = await gmail.users.messages.list({
+            userId: "me", q: `from:${v.sender}`, maxResults: 1,
+          });
+          v.mailboxEstimate = data.resultSizeEstimate ?? null;
+        } catch { v.mailboxEstimate = null; }
+      }));
+    }
+    return res.json({ dryRun: true, plan: dryRunPlan(withEstimates, filterAction, { deleteExisting }) });
+  }
+
+  const jobId = createNukeJob({ vendors: withEstimates, filterAction, demo: useDemo, deleteExisting });
   if (useDemo) {
     runNukeJob(jobId, { simulate: true }).catch((e) => log("warn", { event: "demo_nuke_failed", message: clip(e.message, 120) }));
     return res.json({ jobId, demo: true });
@@ -277,6 +310,24 @@ app.post("/api/nuke", nukeLimiter, async (req, res) => {
         userId: "me",
         requestBody: { criteria: { from: fromQuery }, action: act },
       });
+    },
+    // Fan-out: list ALL message ids from one sender (paginated, hard cap).
+    listMessageIds: async (sender) => {
+      const ids = [];
+      let pageToken;
+      do {
+        const { data } = await gmail.users.messages.list({
+          userId: "me", q: `from:${sender}`, maxResults: 500, pageToken,
+        });
+        for (const m of data.messages || []) ids.push(m.id);
+        pageToken = data.nextPageToken;
+      } while (pageToken && ids.length < 5000);
+      return ids;
+    },
+    // Gmail batchDelete: up to 1000 ids per call. Returns deleted count.
+    batchDelete: async (ids) => {
+      await gmail.users.messages.batchDelete({ userId: "me", requestBody: { ids } });
+      return ids.length;
     },
   };
 
